@@ -56,8 +56,8 @@ def login_instagram():
         except: pass
 
     # LOGIN MANUAL (1ª VEZ)
-    USER = os.environ.get("IG_USER", "SEU_USUARIO_AQUI")
-    PASS = os.environ.get("IG_PASS", "SUA_SENHA_AQUI")
+    USER = os.environ.get("IG_USER", "ladelicato_")
+    PASS = os.environ.get("IG_PASS", "jesusteama")
     if USER == "SEU_USUARIO_AQUI": 
         print("Configure IG_USER e IG_PASS no Render")
         return False
