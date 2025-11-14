@@ -1,83 +1,61 @@
-# app.py - Backend REAL + Status de Saúde
+# app.py - Backend com Gráfico e Lista de Clientes
 from flask import Flask, jsonify
 from flask_cors import CORS
 import json
 import os
 from datetime import datetime, date
-import random
+from collections import defaultdict
 
 app = Flask(__name__)
-CORS(app, origins=["https://ladelicato.netlify.app", "http://localhost"])
+CORS(app, origins=["*"])
 
-DATA_DIR = '.'  # Mude se necessário
+DATA_DIR = '.'
 
-# =============================================
-# DADOS REAIS DO BOT (arquivos gerados pelo insta.py)
-# =============================================
-def get_real_data():
+def get_vendas():
+    if not os.path.exists('vendas.json'): return []
     try:
-        # 1. Vendas hoje (simulado com base em DMs respondidas hoje)
-        today = date.today().isoformat()
-        vendas_hoje = 0
-        if os.path.exists('respondidas.json'):
-            with open('respondidas.json', 'r') as f:
-                respondidas = json.load(f)
-                vendas_hoje = sum(1 for t in respondidas if t.startswith(today))
+        with open('vendas.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except: return []
 
-        # 2. Vendas no mês
-        vendas_mes = len([t for t in respondidas if t.split('-')[1] == str(date.today().month).zfill(2)])
+def get_chart_data():
+    vendas = get_vendas()
+    por_dia = defaultdict(float)
+    for v in vendas:
+        dia = v['data_hora'][:10]
+        por_dia[dia] += v['valor']
+    return [{"dia": d, "valor": v} for d, v in sorted(por_dia.items())[-7:]]
 
-        # 3. Vendedores ativos (simulado com base em threads ativas)
-        active_sellers = random.randint(3, 8) if vendas_hoje > 0 else 0
-
-        # 4. Clientes aguardando
-        pending = 0
-        if os.path.exists('pendentes.json') and os.path.exists('respondidas.json'):
-            pendentes = set(json.load(open('pendentes.json')))
-            respondidas_set = set(json.load(open('respondidas.json')))
-            pending = len(pendentes - respondidas_set)
-
-        return {
-            "today_sales": vendas_hoje * 89.90,  # R$ 89,90 por venda (exemplo)
-            "month_sales": vendas_mes * 89.90,
-            "active_sellers": active_sellers,
-            "pending_clients": pending
-        }
-    except Exception as e:
-        print("Erro ao ler dados:", e)
-        return {"today_sales": 0, "month_sales": 0, "active_sellers": 0, "pending_clients": 0}
-
-# =============================================
-# ENDPOINT: Métricas
-# =============================================
 @app.route('/api/dashboard/metrics')
 def metrics():
-    data = get_real_data()
-    data["last_update"] = datetime.now().strftime("%H:%M:%S")
-    data["backend_status"] = "online"
-    return jsonify(data)
+    vendas = get_vendas()
+    hoje = date.today().isoformat()
+    vendas_hoje = [v for v in vendas if v['data_hora'][:10] == hoje]
+    vendas_mes = [v for v in vendas if v['data_hora'][:7] == hoje[:7]]
 
-# =============================================
-# ENDPOINT: Teste de saúde
-# =============================================
+    pendentes = 0
+    if os.path.exists('pendentes.json') and os.path.exists('respondidas.json'):
+        p = set(json.load(open('pendentes.json')))
+        r = set(json.load(open('respondidas.json')))
+        pendentes = len(p - r)
+
+    return jsonify({
+        "today_sales": sum(v['valor'] for v in vendas_hoje),
+        "month_sales": sum(v['valor'] for v in vendas_mes),
+        "active_sellers": len(vendas_hoje),
+        "pending_clients": pendentes,
+        "chart_data": get_chart_data(),
+        "recent_sales": sorted(vendas_hoje, key=lambda x: x['data_hora'], reverse=True)[:5],
+        "last_update": datetime.now().strftime("%H:%M:%S")
+    })
+
 @app.route('/api/health')
 def health():
-    return jsonify({
-        "status": "online",
-        "timestamp": datetime.now().isoformat(),
-        "instagram_bot": "active" if os.path.exists('session.json') else "inactive"
-    })
+    return jsonify({"status": "online", "files": os.listdir(DATA_DIR)})
 
-# =============================================
-# ROTA INICIAL
-# =============================================
 @app.route('/')
 def home():
-    return jsonify({
-        "service": "Ladelicato SaaS",
-        "status": "running",
-        "endpoints": ["/api/dashboard/metrics", "/api/health"]
-    })
+    return "Ladelicato SaaS - Online"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
