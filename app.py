@@ -1,77 +1,83 @@
-# app.py - Backend Flask para Dashboard SaaS (Instagram DMs)
-from flask import Flask, jsonify, send_from_directory
+# app.py - Backend REAL + Status de Saúde
+from flask import Flask, jsonify
 from flask_cors import CORS
 import json
-import random
 import os
-from datetime import datetime
+from datetime import datetime, date
+import random
 
-app = Flask(__name__, static_folder=None)
-CORS(app)  # Permite Netlify acessar
+app = Flask(__name__)
+CORS(app, origins=["https://ladelicato.netlify.app", "http://localhost"])
 
-# =============================================
-# PASTA DE ARQUIVOS DO BOT (mesmo diretório)
-# =============================================
-DATA_DIR = '.'  # mesmo local do app.py
+DATA_DIR = '.'  # Mude se necessário
 
 # =============================================
-# FUNÇÃO: Clientes aguardando atendimento (Instagram DMs)
+# DADOS REAIS DO BOT (arquivos gerados pelo insta.py)
 # =============================================
-def get_pending_clients():
+def get_real_data():
     try:
-        respondidas_path = os.path.join(DATA_DIR, 'respondidas.json')
-        pendentes_path = os.path.join(DATA_DIR, 'pendentes.json')
+        # 1. Vendas hoje (simulado com base em DMs respondidas hoje)
+        today = date.today().isoformat()
+        vendas_hoje = 0
+        if os.path.exists('respondidas.json'):
+            with open('respondidas.json', 'r') as f:
+                respondidas = json.load(f)
+                vendas_hoje = sum(1 for t in respondidas if t.startswith(today))
 
-        # Carrega quem já respondeu
-        respondidas = set()
-        if os.path.exists(respondidas_path):
-            with open(respondidas_path, 'r', encoding='utf-8') as f:
-                respondidas = set(json.load(f))
+        # 2. Vendas no mês
+        vendas_mes = len([t for t in respondidas if t.split('-')[1] == str(date.today().month).zfill(2)])
 
-        # Carrega quem mandou mensagem
-        pendentes = set()
-        if os.path.exists(pendentes_path):
-            with open(pendentes_path, 'r', encoding='utf-8') as f:
-                pendentes = set(json.load(f))
+        # 3. Vendedores ativos (simulado com base em threads ativas)
+        active_sellers = random.randint(3, 8) if vendas_hoje > 0 else 0
 
-        # Clientes que mandaram DM mas NÃO foram respondidos
-        return len(pendentes - respondidas)
+        # 4. Clientes aguardando
+        pending = 0
+        if os.path.exists('pendentes.json') and os.path.exists('respondidas.json'):
+            pendentes = set(json.load(open('pendentes.json')))
+            respondidas_set = set(json.load(open('respondidas.json')))
+            pending = len(pendentes - respondidas_set)
+
+        return {
+            "today_sales": vendas_hoje * 89.90,  # R$ 89,90 por venda (exemplo)
+            "month_sales": vendas_mes * 89.90,
+            "active_sellers": active_sellers,
+            "pending_clients": pending
+        }
     except Exception as e:
-        print(f"Erro ao calcular pendentes: {e}")
-        return 0
+        print("Erro ao ler dados:", e)
+        return {"today_sales": 0, "month_sales": 0, "active_sellers": 0, "pending_clients": 0}
 
 # =============================================
-# ENDPOINT: Métricas do Dashboard
+# ENDPOINT: Métricas
 # =============================================
 @app.route('/api/dashboard/metrics')
 def metrics():
-    pending = get_pending_clients()
+    data = get_real_data()
+    data["last_update"] = datetime.now().strftime("%H:%M:%S")
+    data["backend_status"] = "online"
+    return jsonify(data)
+
+# =============================================
+# ENDPOINT: Teste de saúde
+# =============================================
+@app.route('/api/health')
+def health():
     return jsonify({
-        "today_sales": round(random.uniform(1200, 4800), 2),
-        "month_sales": round(random.uniform(28000, 92000), 2),
-        "active_sellers": random.randint(7, 16),
-        "pending_clients": pending,
-        "last_update": datetime.now().strftime("%H:%M:%S")
+        "status": "online",
+        "timestamp": datetime.now().isoformat(),
+        "instagram_bot": "active" if os.path.exists('session.json') else "inactive"
     })
 
 # =============================================
-# ROTA INICIAL (saúde do servidor)
+# ROTA INICIAL
 # =============================================
 @app.route('/')
 def home():
     return jsonify({
-        "status": "online",
-        "service": "Ladelicato SaaS Backend",
-        "instagram_integration": "active",
-        "pending_clients": get_pending_clients()
+        "service": "Ladelicato SaaS",
+        "status": "running",
+        "endpoints": ["/api/dashboard/metrics", "/api/health"]
     })
 
-# =============================================
-# INICIAR SERVIDOR
-# =============================================
 if __name__ == '__main__':
-    print("Ladelicato SaaS Backend")
-    print("Instagram DMs → Dashboard")
-    print("Acesse: http://localhost:5000")
-    print("API: /api/dashboard/metrics")
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
